@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cyberattack Propagation Explorer</title>
+  <link rel="stylesheet" href="style.css?v=20261102">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="title-row">
+        <h1>Cyberattack Propagation Explorer</h1>
+        <button class="info-btn" type="button" data-help="app"
+                aria-label="What does this site do?" aria-haspopup="dialog">i</button>
+      </div>
+      <p class="sub">CICIoT2023 &middot; PCAP &rarr; flows &rarr; GraphX &middot; one graph per attack label</p>
+    </div>
+    <div class="meta-row">
+      <button class="info-btn" type="button" data-help="meta"
+              aria-label="What does this line mean?" aria-haspopup="dialog">i</button>
+      <div class="meta" id="meta">&nbsp;</div>
+    </div>
+  </header>
+
+  <div id="fatal" class="fatal" hidden>
+    <h2>Cannot load graph data</h2>
+    <p id="fatal-msg"></p>
+    <p>Serve the folder over HTTP; opening the file directly blocks <code>fetch()</code>:</p>
+    <pre>scripts/serve_ui.sh</pre>
+  </div>
+
+  <main id="app" hidden>
+    <aside id="labels" class="sidebar">
+      <div class="panel-head">
+        <h2>Attack labels</h2>
+        <button class="info-btn" type="button" data-help="labels"
+                aria-label="What is an attack label?" aria-haspopup="dialog">i</button>
+      </div>
+      <div id="label-list"></div>
+      <div class="sidebar-foot">
+        <p id="source-line"></p>
+        <p class="hint">Node size follows the selected metric. Colour marks the weakly connected component; a gold ring is the gateway, red is the scanner. A focused device has a white outline with a cyan glow.</p>
+      </div>
+    </aside>
+
+    <section class="stage">
+      <div class="toolbar">
+        <div class="group">
+          <div class="label-row">
+            <label for="metric">Size by</label>
+            <button class="info-btn" type="button" data-help="metric"
+                    aria-label="What does Size by mean?" aria-haspopup="dialog">i</button>
+          </div>
+          <select id="metric">
+            <option value="pr">PageRank</option>
+            <option value="bc">Betweenness</option>
+            <option value="deg">Out-degree</option>
+          </select>
+        </div>
+        <div class="group grow">
+          <div class="label-row">
+            <label for="threshold">Min edge bytes <span id="threshold-val" class="val"></span></label>
+            <button class="info-btn" type="button" data-help="threshold"
+                    aria-label="What does Min edge bytes do?" aria-haspopup="dialog">i</button>
+          </div>
+          <input id="threshold" type="range" min="0" max="100" value="0" step="1">
+        </div>
+        <div class="group grow">
+          <div class="label-row">
+            <label for="window">Time window <span id="window-val" class="val">all</span></label>
+            <button class="info-btn" type="button" data-help="window"
+                    aria-label="What is a time window?" aria-haspopup="dialog">i</button>
+          </div>
+          <input id="window" type="range" min="0" max="0" value="0" step="1">
+        </div>
+        <div class="group">
+          <div class="label-row">
+            <label for="search">Find IP</label>
+            <button class="info-btn" type="button" data-help="search"
+                    aria-label="How does Find IP work?" aria-haspopup="dialog">i</button>
+          </div>
+          <input id="search" type="search" placeholder="192.168.0.10" list="ip-list">
+          <datalist id="ip-list"></datalist>
+        </div>
+        <div class="group buttons">
+          <button id="zoom-out" title="Zoom out">&minus;</button>
+          <button id="zoom-in" title="Zoom in">+</button>
+          <button id="fit" title="Fit graph to view">Fit</button>
+          <button id="relayout" title="Run layout again">Re-layout</button>
+          <button id="labels-toggle" title="Show or hide IP labels">Labels</button>
+          <button id="play" title="Play through time windows">Play</button>
+          <button id="share" title="Copy a link to this exact view">Copy link</button>
+          <button id="png" title="Download PNG">PNG</button>
+          <button class="info-btn" type="button" data-help="view"
+                  aria-label="What do these buttons do?" aria-haspopup="dialog">i</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <div id="cy"></div>
+        <button class="info-btn canvas-info" type="button" data-help="graph"
+                aria-label="What am I looking at?" aria-haspopup="dialog">i</button>
+        <div id="tooltip" class="tooltip" hidden></div>
+        <div id="focus-note" class="focus-note" hidden></div>
+        <div id="edge-legend" class="edge-legend" hidden>
+          <div class="edge-legend-title">Traffic volume</div>
+          <div id="edge-ramp" class="edge-ramp" role="img"
+               aria-label="Edge colour ramp from low to high bytes"></div>
+          <div class="edge-legend-values"><span id="edge-low"></span><span id="edge-high"></span></div>
+          <div class="edge-legend-note">Colour and thickness follow the same log scale.</div>
+        </div>
+        <div id="counts" class="counts"><span id="counts-text"></span><button class="info-btn" type="button"
+              data-help="counts" aria-label="What do the counts mean?" aria-haspopup="dialog">i</button></div>
+        <div id="empty" class="empty" hidden>No nodes match the current filters.</div>
+      </div>
+    </section>
+
+    <aside class="details">
+      <div id="details-body">
+        <div class="panel-head">
+          <h2 id="details-title">Graph summary</h2>
+          <button class="info-btn" type="button" id="details-info" data-help="summary"
+                  aria-label="What do these numbers mean?" aria-haspopup="dialog">i</button>
+        </div>
+        <div id="details-content"></div>
+      </div>
+      <div id="legend" class="legend">
+        <div class="panel-head">
+          <h3>Components</h3>
+          <button class="info-btn" type="button" data-help="legend"
+                  aria-label="What is a component?" aria-haspopup="dialog">i</button>
+        </div>
+        <div id="legend-items"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="vendor/cytoscape.min.js"></script>
+  <script src="help.js?v=20261102"></script>
+  <script src="app.js?v=20261102"></script>
+</body>
+</html>
